@@ -54,29 +54,8 @@ def predict(filename):
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\Tesseract.exe'
     image, words, boxes, actual_boxes = preprocess("uploads/"+filename)
     word_level_predictions, final_boxes, actual_words = convert_to_features(image, words, boxes, actual_boxes,model)
-    key_value_pairs = []
-    current_key = None
-    current_value = None
-
-    for prediction, word in zip(word_level_predictions, actual_words):
-        predicted_label = iob_to_label(label_map[prediction]).lower()
-
-        if predicted_label == "question":  # Assuming 'question' is the label for key
-            if current_key is not None:  # Store previous key-value pair
-                key_value_pairs.append((current_key, current_value))
-            current_key = word  # Start a new key
-            current_value = ""
-        elif predicted_label == "answer":  # Assuming 'answer' is the label for value
-            if current_value is None:
-                current_value = word  # Initialize value
-            else:
-                current_value += " " + word  # Continue value if it's multi-word
-        # Handle cases where the label may not fit question-answer pattern
-
-    if current_key is not None:  # Store the last pair if any
-        key_value_pairs.append((current_key, current_value))
-
-    return key_value_pairs
+    
+    extract_key_value_pairs(word_level_predictions,final_boxes,actual_words)
 
 
 
@@ -94,7 +73,7 @@ def upload_image():
 
     return render_template('index.html', form=form, file_url=file_url)
 
-def extract_key_value_pairs():
+def extract_key_value_pairs(word_level_predictions,final_boxes,actual_words):
     # Storage for extracted key-value pairs
     key_value_pairs = defaultdict(str)
     
