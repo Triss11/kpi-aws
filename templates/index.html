@@ -30,11 +30,25 @@
         </div>
         </div>
     </form>
-{% if file_url %}
-    <div class="mt-5">
-        <img src="{{ file_url }}" style="width: 400px;">
-    </div>
-{% endif %}
+        <table border="1">
+            <thead>
+            <th> key </th>
+            <th> value </th>
+            </thead>
+            <tbody>
+            {% for key, value in key_value_pairs.items() %}
+            <tr>
+                <td>{{ key }}</td>
+                <td>{{ value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+            </table>
+<!--{% if file_url %}-->
+<!--    <div class="mt-5">-->
+<!--        <img src="{{ file_url }}" style="width: 400px;">-->
+<!--    </div>-->
+<!--{% endif %}-->
 </body>
 
 </html>
