@@ -1,17 +1,13 @@
-from flask import Flask, request, render_template, send_from_directory, url_for
-from flask_restful import Resource, Api
-import pickle
-import pandas as pd
+import os
+
+from flask import Flask, request, jsonify
+from flask_restful import Api
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 from layoutlm_preprocess import *
-from flask_uploads import UploadSet, IMAGES, configure_uploads
-from flask_wtf.file import FileField, FileRequired, FileAllowed
-from wtforms import SubmitField
-from flask_wtf import FlaskForm
 import pytesseract
 import json
 from collections import defaultdict
-import re
 
 app = Flask(__name__)  # instance of flask
 
@@ -20,26 +16,8 @@ CORS(app)
 # creating API object
 api = Api(app)
 app.config['SECRET_KEY'] = 'password'
-app.config['UPLOADED_PHOTOS_DEST'] = 'uploads'
-
-photos = UploadSet('photos', IMAGES)
-configure_uploads(app, photos)
-
-
-class UploadForm(FlaskForm):
-    photo = FileField(
-        validators=[
-            FileAllowed(photos, 'Only images'),
-            FileRequired('File field should not be empty')
-        ]
-    )
-    submit = SubmitField('Upload')
-
-
-@app.route('/uploads/<filename>')
-def get_file():
-    print("file got")
-    return send_from_directory('output.json')
+UPLOAD_FOLDER = '/Users/abhinav/projects/python/kpi-aws/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 def iob_to_label(label):
@@ -53,12 +31,11 @@ label_map = {0: 'B-ANSWER', 1: 'B-HEADER', 2: 'B-QUESTION', 3: 'E-ANSWER', 4: 'E
              6: 'I-ANSWER', 7: 'I-HEADER', 8: 'I-QUESTION', 9: 'O', 10: 'S-ANSWER', 11: 'S-HEADER', 12: 'S-QUESTION'}
 
 
-# @app.route('/predict-image/<filename>', methods=['GET'])
 def predict(filename):
     print('model run')
     # #load the model
     model = model_load('layoutlm.pt', 13)
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\Tesseract.exe'
+    pytesseract.pytesseract.tesseract_cmd = r'/opt/homebrew/Cellar/tesseract/5.4.1_1/bin/tesseract'
     image, words, boxes, actual_boxes = preprocess("uploads/" + filename)
     word_level_predictions, final_boxes, actual_words = convert_to_features(image, words, boxes, actual_boxes, model)
 
@@ -66,19 +43,19 @@ def predict(filename):
     return key_value_pairs
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/extract_key_info', methods=['GET', 'POST'])
 # upload image
 def upload_image():
     print("file uploaded")
-    form = UploadForm()
-    if form.validate_on_submit():
-        filename = photos.save(form.photo.data)
-        file_url = url_for('get_file', filename=filename)
-        key_value_pairs = predict(filename)
-    else:
-        file_url = None
-
-    return render_template('index.html', form=form, file_url=file_url, key_value_pairs=key_value_pairs)
+    if 'image' not in request.files:
+        return "ERROR:: Please upload a file for processing", 400
+    file = request.files['image']
+    if file.filename == '':
+        return "ERROR:: Empty file uploaded. Please upload a valid image", 400
+    filename = secure_filename(file.filename)
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    key_value_pairs = predict(filename)
+    return jsonify(key_value_pairs)
 
 
 def extract_key_value_pairs(word_level_predictions, final_boxes, actual_words):
@@ -87,8 +64,6 @@ def extract_key_value_pairs(word_level_predictions, final_boxes, actual_words):
 
     current_key = ""
     current_value = ""
-    is_key_active = False  # Tracks if we are appending to a key or value
-
     for prediction, box, word in zip(word_level_predictions, final_boxes, actual_words):
         predicted_label = iob_to_label(label_map[prediction]).lower()
 
@@ -103,12 +78,10 @@ def extract_key_value_pairs(word_level_predictions, final_boxes, actual_words):
                 current_value = ""  # Reset value
 
             current_key += f" {word}"  # Append word to key
-            is_key_active = True  # Indicate that we're building the key
 
         # If the predicted label is 'answer', append to the current value
         elif predicted_label == 'answer':
             current_value += f" {word}"  # Append word to value
-            is_key_active = False  # Indicate that we're building the value
 
         # If a non-question/answer label appears, finalize the current key-value pair
         else:
@@ -129,6 +102,7 @@ def extract_key_value_pairs(word_level_predictions, final_boxes, actual_words):
     save_as_json(key_value_pairs)
 
     return key_value_pairs
+
 
 def save_as_json(key_value_pairs):
     key_value_dict = {key: value for key, value in key_value_pairs.items()}
