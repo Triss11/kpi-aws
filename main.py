@@ -9,6 +9,8 @@ from flask_wtf.file import FileField, FileRequired, FileAllowed
 from wtforms import SubmitField
 from flask_wtf import FlaskForm
 import pytesseract
+import json
+from collections import defaultdict
 
 app = Flask(__name__) #instance of flask
 
@@ -44,7 +46,7 @@ def iob_to_label(label):
 
 label_map= {0: 'B-ANSWER', 1: 'B-HEADER', 2: 'B-QUESTION', 3: 'E-ANSWER', 4: 'E-HEADER', 5: 'E-QUESTION', 6: 'I-ANSWER', 7: 'I-HEADER', 8: 'I-QUESTION', 9: 'O', 10: 'S-ANSWER', 11: 'S-HEADER', 12: 'S-QUESTION'}
 
-@app.route('/predict-image/<filename>', methods=['GET'])
+#@app.route('/predict-image/<filename>', methods=['GET'])
 def predict(filename):
     print('model run')
     # #load the model
@@ -86,10 +88,67 @@ def upload_image():
     if form.validate_on_submit():
         filename = photos.save(form.photo.data)
         file_url = url_for('get_file', filename=filename)
+        predict(filename)
     else:
         file_url = None
+
     return render_template('index.html', form=form, file_url=file_url)
 
+def extract_key_value_pairs():
+    # Storage for extracted key-value pairs
+    key_value_pairs = defaultdict(str)
+    
+    current_key = ""
+    current_value = ""
+    is_key_active = False  # Tracks if we are appending to a key or value
+    
+    for prediction, box, word in zip(word_level_predictions, final_boxes, actual_words):
+        predicted_label = iob_to_label(label_map[prediction]).lower()
+    
+        #print(f"Word: {word}, Prediction: {predicted_label}")
+    
+        # If the predicted label is 'question', append to the current key
+        if predicted_label == 'question':
+            # If there was an active value and a new question starts, finalize the key-value pair
+            if current_key and current_value:
+                key_value_pairs[current_key.strip()] = current_value.strip()
+                current_key = ""  # Reset key
+                current_value = ""  # Reset value
+    
+            current_key += f" {word}"  # Append word to key
+            is_key_active = True  # Indicate that we're building the key
+    
+        # If the predicted label is 'answer', append to the current value
+        elif predicted_label == 'answer':
+            current_value += f" {word}"  # Append word to value
+            is_key_active = False  # Indicate that we're building the value
+    
+        # If a non-question/answer label appears, finalize the current key-value pair
+        else:
+            if current_key and current_value:
+                key_value_pairs[current_key.strip()] = current_value.strip()
+            current_key = ""  # Reset for the next key
+            current_value = ""  # Reset for the next value
+    
+    # If any key-value pair remains unprocessed, add it
+    if current_key and current_value:
+        key_value_pairs[current_key.strip()] = current_value.strip()
+    
+    # Print the extracted key-value pairs
+    print("\nExtracted Key-Value Pairs:")
+    for key, value in key_value_pairs.items():
+        print(f"{key.capitalize()}: {value}")
+
+    save_as_json(key_value_pairs)
+
+def save_as_json(key_value_pairs):
+    key_value_dict = {key: value for key, value in key_value_pairs.items()}
+
+    # Save the dictionary to a JSON file
+    with open('output.json', 'w') as json_file:
+        json.dump(key_value_dict, json_file, indent=4)
+    
+    print("JSON file created successfully!")
 
 if __name__ == '__main__':
     app.run(debug=True)
