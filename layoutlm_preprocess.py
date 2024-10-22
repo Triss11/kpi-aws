@@ -6,13 +6,15 @@ import torch
 from transformers import LayoutLMTokenizer
 from transformers import LayoutLMForTokenClassification
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+import re
 
 args = {'local_rank': -1,
         'overwrite_cache': True,
         'data_dir': 'drive/MyDrive/UBIAI_layoutlm/data_UBIAI',
-        'model_name_or_path':'microsoft/layoutlm-base-uncased',
+        'model_name_or_path': 'microsoft/layoutlm-base-uncased',
         'max_seq_length': 512,
-        'model_type': 'layoutlm',}
+        'model_type': 'layoutlm', }
+
 
 # class to turn the keys of a dict into attributes (thanks Stackoverflow)
 class AttrDict(dict):
@@ -20,14 +22,14 @@ class AttrDict(dict):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
+
 args = AttrDict(args)
 
 tokenizer = LayoutLMTokenizer.from_pretrained("microsoft/layoutlm-base-uncased")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def model_load(PATH, num_labels):
-
-
     model = LayoutLMForTokenClassification.from_pretrained("microsoft/layoutlm-base-uncased", num_labels=num_labels)
     model.load_state_dict(torch.load(PATH, map_location=device))
     model.to(device)
@@ -36,7 +38,6 @@ def model_load(PATH, num_labels):
 
 
 def preprocess(image_path):
-
     image = Image.open(image_path)
     image = image.convert("RGB")
 
@@ -45,11 +46,11 @@ def preprocess(image_path):
     h_scale = 1000 / height
     ocr_df = pytesseract.image_to_data(image, output_type='data.frame')
     ocr_df = ocr_df.dropna().assign(left_scaled=ocr_df.left * w_scale,
-                    width_scaled=ocr_df.width * w_scale,
-                    top_scaled=ocr_df.top * h_scale,
-                    height_scaled=ocr_df.height * h_scale,
-                    right_scaled=lambda x: x.left_scaled + x.width_scaled,
-                    bottom_scaled=lambda x: x.top_scaled + x.height_scaled)
+                                    width_scaled=ocr_df.width * w_scale,
+                                    top_scaled=ocr_df.top * h_scale,
+                                    height_scaled=ocr_df.height * h_scale,
+                                    right_scaled=lambda x: x.left_scaled + x.width_scaled,
+                                    bottom_scaled=lambda x: x.top_scaled + x.height_scaled)
     float_cols = ocr_df.select_dtypes('float').columns
     ocr_df[float_cols] = ocr_df[float_cols].round(0).astype(int)
     ocr_df = ocr_df.replace(r'^\s*$', np.nan, regex=True)
@@ -59,13 +60,14 @@ def preprocess(image_path):
     coordinates = ocr_df[['left', 'top', 'width', 'height']]
     actual_boxes = []
     for idx, row in coordinates.iterrows():
-      x, y, w, h = tuple(row) # the row comes in (left, top, width, height) format
-      actual_box = [x, y, x+w, y+h] # we turn it into (left, top, left+widght, top+height) to get the actual box
-      actual_boxes.append(actual_box)
+        x, y, w, h = tuple(row)  # the row comes in (left, top, width, height) format
+        actual_box = [x, y, x + w, y + h]  # we turn it into (left, top, left+widght, top+height) to get the actual box
+        actual_boxes.append(actual_box)
     boxes = []
     for box in actual_boxes:
         boxes.append(normalize_box(box, width, height))
-    return image, words, boxes, actual_boxes, ocr_df
+    return image, words, boxes, actual_boxes
+
 
 def normalize_box(box, width, height):
     return [
@@ -80,7 +82,6 @@ def convert_example_to_features(image, words, boxes, actual_boxes, tokenizer, ar
                                 sep_token_box=[1000, 1000, 1000, 1000],
                                 pad_token_box=[0, 0, 0, 0]):
     width, height = image.size
-
 
     tokens = []
     token_boxes = []
@@ -132,6 +133,14 @@ def convert_example_to_features(image, words, boxes, actual_boxes, tokenizer, ar
 
     return input_ids, input_mask, segment_ids, token_boxes, token_actual_boxes
 
+def iob_to_label(label):
+    if label != 'O':
+        return label[2:]
+    else:
+        return ""
+
+label_map = {0: 'B-ANSWER', 1: 'B-HEADER', 2: 'B-QUESTION', 3: 'E-ANSWER', 4: 'E-HEADER', 5: 'E-QUESTION',
+             6: 'I-ANSWER', 7: 'I-HEADER', 8: 'I-QUESTION', 9: 'O', 10: 'S-ANSWER', 11: 'S-HEADER', 12: 'S-QUESTION'}
 
 def convert_to_features(image, words, boxes, actual_boxes, model):
     input_ids, input_mask, segment_ids, token_boxes, token_actual_boxes = convert_example_to_features(
@@ -163,13 +172,14 @@ def convert_to_features(image, words, boxes, actual_boxes, model):
         decoded_token = tokenizer.decode([id])
 
         # Skip special tokens (CLS, SEP, PAD) or non-alphabetic characters like underscores
-        if decoded_token.startswith("##") or (id in [tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id]):
+        if decoded_token.startswith("##") or (
+                id in [tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id]):
             continue
-        
+
         # Skip tokens that are empty or just punctuation
         if not decoded_token.strip() or re.match(r'^\W+$', decoded_token):
             continue
-        
+
         # Add word-level information
         actual_word = decoded_token
         actual_words.append(actual_word)
@@ -178,6 +188,5 @@ def convert_to_features(image, words, boxes, actual_boxes, model):
 
         # Convert token prediction to label and store in array
         label = iob_to_label(label_map[token_pred]).lower()
-        arr.append([actual_word, label, token_pred])
 
-    return word_level_predictions, final_boxes, actual_words, arr
+    return word_level_predictions, final_boxes, actual_words
