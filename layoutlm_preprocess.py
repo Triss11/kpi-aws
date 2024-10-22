@@ -1,29 +1,3 @@
-
-Conversation opened. 1 read message.
-
-Skip to content
-Using Gmail with screen readers
-
-Conversations
-me
-(no subject)
- - latest preprocess
-Attachment:
-layoutlm_preprocess_latest.txt
-me
-(no subject)
- - both the preprocess are different. the last one is the one from the same directory as the main
-Attachment:
-layoutlm_preprocess.py
-Attachment:
-main.py
-Attachment:
-layoutlm_preprocess.py
-2:27 PM
-47.28 GB of 100 GB used
-Terms · Privacy · Program Policies
-Last account activity: 0 minutes ago
-Open in 1 other location · Details
 import numpy as np
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
@@ -207,5 +181,3 @@ def convert_to_features(image, words, boxes, actual_boxes, model):
         arr.append([actual_word, label, token_pred])
 
     return word_level_predictions, final_boxes, actual_words, arr
-layoutlm_preprocess_latest.txt
-Displaying layoutlm_preprocess_latest.txt.
