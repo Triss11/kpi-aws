@@ -1,3 +1,29 @@
+
+Conversation opened. 1 read message.
+
+Skip to content
+Using Gmail with screen readers
+
+Conversations
+me
+(no subject)
+ - latest preprocess
+Attachment:
+layoutlm_preprocess_latest.txt
+me
+(no subject)
+ - both the preprocess are different. the last one is the one from the same directory as the main
+Attachment:
+layoutlm_preprocess.py
+Attachment:
+main.py
+Attachment:
+layoutlm_preprocess.py
+2:27 PM
+47.28 GB of 100 GB used
+Terms · Privacy · Program Policies
+Last account activity: 0 minutes ago
+Open in 1 other location · Details
 import numpy as np
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
@@ -54,7 +80,7 @@ def preprocess(image_path):
     ocr_df[float_cols] = ocr_df[float_cols].round(0).astype(int)
     ocr_df = ocr_df.replace(r'^\s*$', np.nan, regex=True)
     ocr_df = ocr_df.dropna().reset_index(drop=True)
-
+    # print(ocr_df)
     words = list(ocr_df.text)
     coordinates = ocr_df[['left', 'top', 'width', 'height']]
     actual_boxes = []
@@ -65,7 +91,7 @@ def preprocess(image_path):
     boxes = []
     for box in actual_boxes:
         boxes.append(normalize_box(box, width, height))
-    return image, words, boxes, actual_boxes
+    return image, words, boxes, actual_boxes, ocr_df
 
 def normalize_box(box, width, height):
     return [
@@ -134,34 +160,52 @@ def convert_example_to_features(image, words, boxes, actual_boxes, tokenizer, ar
 
 
 def convert_to_features(image, words, boxes, actual_boxes, model):
-    input_ids, input_mask, segment_ids, token_boxes, token_actual_boxes = convert_example_to_features(image=image,
-                                                                                                      words=words,
-                                                                                                      boxes=boxes,
-                                                                                                      actual_boxes=actual_boxes,
-                                                                                                      tokenizer=tokenizer,
-                                                                                                      args=args)
+    input_ids, input_mask, segment_ids, token_boxes, token_actual_boxes = convert_example_to_features(
+        image=image,
+        words=words,
+        boxes=boxes,
+        actual_boxes=actual_boxes,
+        tokenizer=tokenizer,
+        args=args
+    )
+
+    # Prepare tensors
     input_ids = torch.tensor(input_ids, device=device).unsqueeze(0)
     attention_mask = torch.tensor(input_mask, device=device).unsqueeze(0)
     token_type_ids = torch.tensor(segment_ids, device=device).unsqueeze(0)
     bbox = torch.tensor(token_boxes, device=device).unsqueeze(0)
-    #model=model_load(model_path,num_labels)
-    outputs = model(input_ids=input_ids, bbox=bbox, attention_mask=attention_mask, token_type_ids=token_type_ids)
-    token_predictions = outputs.logits.argmax(-1).squeeze().tolist()  # the predictions are at the token level
-    #print(token_predictions)
 
-    word_level_predictions = []  # let's turn them into word level predictions
+    # Run model prediction
+    outputs = model(input_ids=input_ids, bbox=bbox, attention_mask=attention_mask, token_type_ids=token_type_ids)
+    token_predictions = outputs.logits.argmax(-1).squeeze().tolist()  # Token-level predictions
+
+    # Collect word-level predictions
+    word_level_predictions = []
     final_boxes = []
     actual_words = []
-    for id, token_pred, box in zip(input_ids.squeeze().tolist(), token_predictions, token_actual_boxes):
-        if (tokenizer.decode([id]).startswith("##")) or (id in [tokenizer.cls_token_id,
-                                                                tokenizer.sep_token_id,
-                                                                tokenizer.pad_token_id]):
-            # skip prediction + bounding box
+    arr = []  # This will store the word, predicted label, and token prediction
 
+    for id, token_pred, box in zip(input_ids.squeeze().tolist(), token_predictions, token_actual_boxes):
+        decoded_token = tokenizer.decode([id])
+
+        # Skip special tokens (CLS, SEP, PAD) or non-alphabetic characters like underscores
+        if decoded_token.startswith("##") or (id in [tokenizer.cls_token_id, tokenizer.sep_token_id, tokenizer.pad_token_id]):
             continue
-        else:
-            # print("id:",tokenizer.decode([id]))
-            actual_words.append(tokenizer.decode([id]))
-            word_level_predictions.append(token_pred)
-            final_boxes.append(box)
-    return word_level_predictions, final_boxes,actual_words
+        
+        # Skip tokens that are empty or just punctuation
+        if not decoded_token.strip() or re.match(r'^\W+$', decoded_token):
+            continue
+        
+        # Add word-level information
+        actual_word = decoded_token
+        actual_words.append(actual_word)
+        word_level_predictions.append(token_pred)
+        final_boxes.append(box)
+
+        # Convert token prediction to label and store in array
+        label = iob_to_label(label_map[token_pred]).lower()
+        arr.append([actual_word, label, token_pred])
+
+    return word_level_predictions, final_boxes, actual_words, arr
+layoutlm_preprocess_latest.txt
+Displaying layoutlm_preprocess_latest.txt.
