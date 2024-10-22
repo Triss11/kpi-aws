@@ -16,7 +16,7 @@ CORS(app)
 # creating API object
 api = Api(app)
 app.config['SECRET_KEY'] = 'password'
-UPLOAD_FOLDER = '/Users/abhinav/projects/python/kpi-aws/uploads'
+UPLOAD_FOLDER = '/usr/src/main/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
@@ -35,7 +35,7 @@ def predict(filename):
     print('model run')
     # #load the model
     model = model_load('layoutlm.pt', 13)
-    pytesseract.pytesseract.tesseract_cmd = r'/opt/homebrew/Cellar/tesseract/5.4.1_1/bin/tesseract'
+    #pytesseract.pytesseract.tesseract_cmd = r'/opt/homebrew/Cellar/tesseract/5.4.1_1/bin/tesseract'
     image, words, boxes, actual_boxes = preprocess("uploads/" + filename)
     word_level_predictions, final_boxes, actual_words = convert_to_features(image, words, boxes, actual_boxes, model)
 
