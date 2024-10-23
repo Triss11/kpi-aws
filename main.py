@@ -34,7 +34,7 @@ CORS(app)
 # creating API object
 api = Api(app)
 app.config['SECRET_KEY'] = 'password'
-UPLOAD_FOLDER = r'/usr/src/main/kpi-aws'
+UPLOAD_FOLDER = r'/usr/src/main/kpi-aws/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
