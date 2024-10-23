@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_restful import Api
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -8,15 +8,33 @@ from layoutlm_preprocess import *
 import pytesseract
 import json
 from collections import defaultdict
+import prometheus_client
+from prometheus_client.core import CollectorRegistry
+from prometheus_client import Summary, Counter, Histogram, Gauge
+import time
+
 
 app = Flask(__name__)  # instance of flask
+
+graphs = {}
+graphs['c'] = Counter('python_request_operations_total', 'The total number of processed requests')
+graphs['h'] = Histogram('python_request_duration_seconds', 'Histogram for the duration in seconds.', buckets=(1, 2, 5, 6, 10))
+
+@app.route('/metrics')
+
+def requests_count():
+    res = []
+    for k,v in graphs.items():
+        res.append(prometheus_client.generate_latest(v))
+    return Response(res, mimetype='text/plain')
+
 
 CORS(app)
 
 # creating API object
 api = Api(app)
 app.config['SECRET_KEY'] = 'password'
-UPLOAD_FOLDER = '/usr/src/main/kpi-aws/uploads'
+UPLOAD_FOLDER = r'/usr/src/main/kpi-aws'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
@@ -35,7 +53,7 @@ def predict(filename):
     print('model run')
     # #load the model
     model = model_load('layoutlm.pt', 13)
-    #pytesseract.pytesseract.tesseract_cmd = r'/opt/homebrew/Cellar/tesseract/5.4.1_1/bin/tesseract'
+    #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\Tesseract.exe'
     image, words, boxes, actual_boxes = preprocess("uploads/" + filename)
     word_level_predictions, final_boxes, actual_words = convert_to_features(image, words, boxes, actual_boxes, model)
 
