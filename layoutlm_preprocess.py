@@ -31,8 +31,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def model_load(PATH, num_labels):
     model = LayoutLMForTokenClassification.from_pretrained("microsoft/layoutlm-base-uncased", num_labels=num_labels)
-    model.load_state_dict(torch.load(PATH, map_location='cpu'))
-    #model.to(device)
+    model.load_state_dict(torch.load(PATH, map_location=device))
+    model.to(device)
     model.eval()
     return model
 
